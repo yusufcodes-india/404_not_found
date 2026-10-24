@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  /* Kilari Brand Colors */
+  --color-kilari-bg: #f4eee0;
+  --color-kilari-card: #faf7ee;
+  --color-kilari-card-border: #ece5d1;
+  --color-kilari-primary: #4b7a3f;
+  --color-kilari-light-green: #93c571;
+  --color-kilari-main: #2a2a24;
+  --color-kilari-muted: #77776a;
+  --color-kilari-notice: #e6eedc;
+  --color-kilari-notice-border: #9bc47f;
+
+  /* Standard Overrides */
+  --color-background: var(--color-kilari-bg);
+  --color-foreground: var(--color-kilari-main);
+}
+
+body {
+  background: var(--color-kilari-bg);
+  color: var(--color-kilari-main);
+  font-family: 'Inter', Arial, Helvetica, sans-serif;
+}
