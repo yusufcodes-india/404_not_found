@@ -606,9 +606,19 @@ function initLiveMap(){
     });
     window.kilariLeafletMap = map;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
+    // Geoapify high-resolution map tiles & custom EV markers
+    const geoapifyKey = 'a3b6cbc4ec4248a49338566cc87eaa60';
+    L.tileLayer('https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=' + geoapifyKey, {
+      attribution: 'Powered by <a href="https://www.geoapify.com/" target="_blank">Geoapify</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+      maxZoom: 20,
     }).addTo(map);
+
+    const evIcon = L.icon({
+      iconUrl: 'https://api.geoapify.com/v1/icon/?type=awesome&color=%23174c3a&icon=bolt&iconType=awesome&apiKey=' + geoapifyKey,
+      iconSize: [31, 46],
+      iconAnchor: [15.5, 42],
+      popupAnchor: [0, -40]
+    });
 
     const chargers = window.liveChargers && window.liveChargers.length > 0 ? window.liveChargers : [
       { id: 'green-hive', title: 'Green Hive Society', approxLat: 18.5590, approxLng: 73.7868, powerKw: 11, connectorType: 'Type 2', pricePerKwh: 14 },
@@ -620,21 +630,14 @@ function initLiveMap(){
       const lat = c.approxLat || (18.5590 + idx * 0.008);
       const lng = c.approxLng || (73.7868 + idx * 0.009);
 
-      const marker = L.circleMarker([lat, lng], {
-        radius: 9,
-        fillColor: '#174c3a',
-        color: '#ffffff',
-        weight: 3,
-        opacity: 1,
-        fillOpacity: 0.95
-      }).addTo(map);
+      const marker = L.marker([lat, lng], { icon: evIcon }).addTo(map);
 
       marker.bindPopup(\`
-        <div style="font-family:'DM Sans',sans-serif;min-width:140px">
-          <strong style="font-size:12px;color:#174c3a;display:block;margin-bottom:2px">\${escapeHTML(c.title || c.name || 'Charger')}</strong>
+        <div style="font-family:'DM Sans',sans-serif;min-width:150px">
+          <strong style="font-size:13px;color:#174c3a;display:block;margin-bottom:3px">\${escapeHTML(c.title || c.name || 'Charger')}</strong>
           <div style="font-size:11px;color:#60766a;margin-bottom:4px">\${c.powerKw || 11} kW · \${c.connectorType || 'Type 2'}</div>
-          <div style="font-weight:700;color:#287451;font-size:12px;margin-bottom:6px">₹\${c.pricePerKwh || 14}/kWh fixed</div>
-          <button style="background:#174c3a;color:white;border:0;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer" onclick="openChargerDetail('\${c.id}')">Select Charger →</button>
+          <div style="font-weight:700;color:#287451;font-size:12px;margin-bottom:7px">₹\${c.pricePerKwh || 14}/kWh fixed</div>
+          <button style="background:#174c3a;color:white;border:0;border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;width:100%" onclick="openChargerDetail('\${c.id}')">Select Charger →</button>
         </div>
       \`);
     });
