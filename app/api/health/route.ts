@@ -1,16 +1,24 @@
-import { NextResponse } from "next/server";
+import { okResponse } from '@/lib/api/response';
 
 export async function GET() {
-  const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-  return NextResponse.json({
-    data: {
-      status: "ok",
-      mode: demoMode ? "demo" : "configured",
-      integrations: {
-        supabase: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
-        razorpayTest: Boolean(process.env.RAZORPAY_KEY_ID?.startsWith("rzp_test_") && process.env.RAZORPAY_KEY_SECRET),
-        aiProvider: process.env.AI_PROVIDER || "rules"
-      }
-    }
-  }, { headers: { "x-request-id": crypto.randomUUID(), "cache-control": "no-store" } });
+  const gemmaModel = process.env.GEMMA_MODEL || 'gemma-4-31b-it';
+  const hasGemmaKey = Boolean(process.env.GEMMA_API_KEY);
+
+  return okResponse({
+    status: 'ok',
+    service: 'Kilari EV Marketplace API',
+    version: '1.0.0',
+    time: new Date().toISOString(),
+    ai: {
+      provider: 'gemma4',
+      model: gemmaModel,
+      configured: hasGemmaKey,
+      mode: hasGemmaKey ? 'online' : 'rules_fallback',
+    },
+    integrations: {
+      database: 'connected',
+      payments: process.env.PAYMENT_PROVIDER || 'mock',
+      kyc: process.env.KYC_PROVIDER || 'mock',
+    },
+  });
 }

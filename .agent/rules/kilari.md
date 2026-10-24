@@ -1,0 +1,16 @@
+# Kilari standing rules
+- Source of truth: KILARI_MASTER_BUILD.md. Re-read the relevant sections before each task.
+- Work on the existing project. Inspect before editing. Never replace the stack or silently drop existing behavior.
+- Next.js App Router + TypeScript strict + Supabase. Zod on every API input. New dependencies only with a reason in docs/ASSUMPTIONS.md.
+- Stored roles are exactly: driver, owner, both, admin. Never store renter/host/customer/lender.
+- Price is fixed Rs 14/kWh = 1400 paise from server config. Never trust amount, price, status, role, owner_id or user_id from the browser. Money = integer paise.
+- Exact address and exact coordinates are private: never in public/list responses, logs, AI prompts, notifications.
+- AI never books, approves, verifies KYC, changes payment status, or overrides rules.
+- Never store Aadhaar, full licence numbers, or document contents.
+- Server secrets never use NEXT_PUBLIC_ and never reach client code, logs, or error messages.
+- Applied migrations are never edited; add new ordered migrations; enum additions in their own file.
+- Service role bypasses RLS: authorize in code first, select explicit columns, return DTOs.
+- Mocks are labelled mock in code, responses and docs. No fake success; use 501/503 when not implemented/not configured.
+- One phase per run. After each: typecheck, lint, test, build (+ test:db if Docker). Fix failures. Never weaken tests.
+- Claim nothing you did not run. Report exact commands/results; mark blocked items "blocked by environment/credentials".
+- Do not ask questions unless truly blocked; choose the safest default and record it in docs/ASSUMPTIONS.md.

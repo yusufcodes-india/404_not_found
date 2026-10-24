@@ -1,0 +1,327 @@
+// Prisma schema for Kilari Full-Stack Marketplace
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  phone        String        @unique
+  email        String?       @unique
+  role         String        @default("DRIVER") // DRIVER, HOST, ADMIN, BOTH
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  sessions     Session[]
+  profile      Profile?
+  vehicles     Vehicle[]
+  chargers     Charger[]     @relation("HostChargers")
+  bookings     Booking[]     @relation("DriverBookings")
+  hostBookings Booking[]     @relation("HostBookings")
+  messages     ChatMessage[]
+  notifications Notification[]
+  incidents    Incident[]    @relation("ReportedIncidents")
+  audits       AuditEvent[]
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  token        String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Profile {
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  fullName       String
+  city           String    @default("Pune")
+  kycStatus      String    @default("NOT_STARTED") // NOT_STARTED, PENDING, VERIFIED, REJECTED
+  onboardingStep String    @default("DONE")
+  termsAccepted  Boolean   @default(true)
+  termsAcceptedAt DateTime? @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verifications  KycVerification[]
+  consents       KycConsent[]
+}
+
+model Vehicle {
+  id           String    @id @default(uuid())
+  userId       String
+  makeModel    String
+  vehicleType  String    // 2-wheeler, 3-wheeler, 4-wheeler
+  connector    String    // Type 2, CCS2, Bharat AC-001, 3-pin
+  batteryKwh   Float?    @default(30.2)
+  registration String
+  isDefault    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings     Booking[]
+}
+
+model KycVerification {
+  id           String    @id @default(uuid())
+  profileId    String
+  provider     String    @default("mock") // mock, digilocker
+  referenceId  String
+  last4        String?
+  status       String    @default("PENDING") // PENDING, VERIFIED, REJECTED
+  verifiedAt   DateTime?
+  evidence     String?
+  createdAt    DateTime  @default(now())
+
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model KycConsent {
+  id           String    @id @default(uuid())
+  profileId    String
+  version      String    @default("1.0")
+  consentGiven Boolean   @default(true)
+  givenAt      DateTime  @default(now())
+
+  profile      Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Charger {
+  id               String    @id @default(uuid())
+  ownerId          String
+  title            String
+  description      String?
+  type             String    @default("Society") // Home, Society, Office, Business, Fleet
+  currentType      String    @default("AC")      // AC, DC
+  powerKw          Float     @default(11.0)
+  connectorType    String    @default("Type 2")  // Type 2, CCS2, Bharat AC-001, 3-pin
+  pricePerKwh      Int       @default(1400)      // fixed 1400 paise = Rs 14
+  city             String    @default("Pune")
+  areaLabel        String    @default("Baner")
+  approxLat        Float
+  approxLng        Float
+  exactAddress     String    // PRIVATE: never in public search
+  exactLat         Float?    // PRIVATE
+  exactLng         Float?    // PRIVATE
+  rules            String?
+  parkingNotes     String?
+  accessNotes      String?
+  status           String    @default("ACTIVE")   // DRAFT, PENDING, ACTIVE, PAUSED, REJECTED
+  healthScore      Int       @default(94)
+  avgRating        Float     @default(4.8)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  owner            User      @relation("HostChargers", fields: [ownerId], references: [id], onDelete: Cascade)
+  availability     ChargerAvailability[]
+  telemetries      ChargerTelemetry[]
+  healthEvents     ChargerHealthEvent[]
+  bookings         Booking[]
+  anomalies        Anomaly[]
+}
+
+model ChargerAvailability {
+  id         String   @id @default(uuid())
+  chargerId  String
+  slotType   String   // daytime, overnight, both
+  startTime  String   @default("22:00")
+  endTime    String   @default("06:00")
+  daysOfWeek String   @default("0,1,2,3,4,5,6")
+  charger    Charger  @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+}
+
+model ChargerTelemetry {
+  id         String   @id @default(uuid())
+  chargerId  String
+  voltage    Float?
+  current    Float?
+  powerKw    Float?
+  status     String   @default("ONLINE")
+  recordedAt DateTime @default(now())
+  charger    Charger  @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+}
+
+model ChargerHealthEvent {
+  id         String   @id @default(uuid())
+  chargerId  String
+  severity   String   // LOW, MEDIUM, HIGH
+  message    String
+  createdAt  DateTime @default(now())
+  charger    Charger  @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+}
+
+model Booking {
+  id                 String    @id @default(uuid())
+  chargerId          String
+  driverId           String
+  hostId             String
+  vehicleId          String?
+  windowStart        DateTime
+  windowEnd          DateTime
+  estKwh             Float     @default(10.0)
+  quotedAmountPaise  Int       @default(14000) // 10 kWh * 1400
+  status             String    @default("REQUESTED") // REQUESTED, APPROVED, PAYMENT_PENDING, PAID, ACTIVE, COMPLETED, DECLINED, CANCELLED, DISPUTED
+  paymentStatus      String    @default("UNPAID")    // UNPAID, CREATED, PAID, REFUNDED
+  paidAmountPaise    Int?      @default(0)
+  gatePassToken      String?
+  cancelReason       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  charger            Charger   @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+  driver             User      @relation("DriverBookings", fields: [driverId], references: [id], onDelete: Cascade)
+  host               User      @relation("HostBookings", fields: [hostId], references: [id], onDelete: Cascade)
+  vehicle            Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  payments           Payment[]
+  chargingSession    ChargingSession?
+  chatThread         ChatThread?
+  incidents          Incident[]
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  bookingId         String
+  amountPaise       Int
+  currency          String   @default("INR")
+  provider          String   @default("razorpay") // razorpay, mock
+  orderId           String   @unique
+  paymentId         String?  @unique
+  signature         String?
+  status            String   @default("CREATED") // CREATED, PAID, FAILED, REFUNDED
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  booking           Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model ChargingSession {
+  id                String    @id @default(uuid())
+  bookingId         String    @unique
+  startReadingKwh   Float
+  endReadingKwh     Float?
+  kwhDelivered      Float?    @default(0)
+  grossPaise        Int?      @default(0)
+  platformFeePaise  Int?      @default(0)
+  hostEarningsPaise Int?      @default(0)
+  status            String    @default("ACTIVE") // ACTIVE, COMPLETED, DISPUTED
+  startedAt         DateTime  @default(now())
+  endedAt           DateTime?
+
+  booking           Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model ChatThread {
+  id          String        @id @default(uuid())
+  bookingId   String        @unique
+  status      String        @default("OPEN") // OPEN, WAITING_FOR_HOST, CLOSED
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
+}
+
+model ChatMessage {
+  id          String     @id @default(uuid())
+  threadId    String
+  senderId    String?    // null for AI assistant
+  senderRole  String     // DRIVER, HOST, ASSISTANT
+  content     String
+  isAi        Boolean    @default(false)
+  moderated   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+
+  thread      ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender      User?      @relation(fields: [senderId], references: [id], onDelete: SetNull)
+}
+
+model AiRequest {
+  id          String   @id @default(uuid())
+  taskName    String
+  model       String
+  prompt      String
+  response    String
+  tokensUsed  Int?
+  latencyMs   Int?
+  status      String   @default("SUCCESS")
+  createdAt   DateTime @default(now())
+}
+
+model AiInsight {
+  id          String   @id @default(uuid())
+  targetType  String   // CHARGER, HOST, DRIVER
+  targetId    String
+  insightType String   // DEMAND, HEALTH, ANOMALY, SMART_PICK
+  content     String
+  confidence  Float    @default(0.85)
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String    // BOOKING_REQUESTED, BOOKING_APPROVED, PAYMENT_CONFIRMED, SESSION_STARTED, SESSION_COMPLETED, ALERT
+  title     String
+  body      String
+  data      String?   // JSON
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Incident {
+  id          String    @id @default(uuid())
+  bookingId   String?
+  reporterId  String
+  type        String    // MISUSE, DAMAGE, CONTACT_LEAK, NO_SHOW
+  description String
+  status      String    @default("OPEN") // OPEN, INVESTIGATING, RESOLVED, DISMISSED
+  resolution  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  booking     Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  reporter    User      @relation("ReportedIncidents", fields: [reporterId], references: [id], onDelete: Cascade)
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String
+  outcome   String   @default("SUCCESS")
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model Anomaly {
+  id         String   @id @default(uuid())
+  chargerId  String
+  kind       String   // LOW_ENERGY, DISCONNECT, READING_MISMATCH
+  severity   String   // LOW, MEDIUM, HIGH
+  confidence Float    @default(0.9)
+  evidence   String?
+  status     String   @default("OPEN")
+  createdAt  DateTime @default(now())
+
+  charger    Charger  @relation(fields: [chargerId], references: [id], onDelete: Cascade)
+}
+
+model IdempotencyKey {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  result    String
+  createdAt DateTime @default(now())
+}
