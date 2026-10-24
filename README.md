@@ -1,25 +1,102 @@
-# Kilari — Next.js prototype with DigiLocker KYC UX
+# ⚡ Kilari — EV Community Charging Marketplace
 
-This Next.js project preserves the supplied Kilari prototype inside a full-screen iframe so its existing design, navigation, workflows, and demo interactions remain intact.
+Kilari is a community EV charging platform that connects EV drivers with private charger hosts in residential societies, apartments, and commercial hubs.
 
-## Run locally
+---
 
-1. Install Node.js LTS.
-2. Extract this ZIP and open a terminal in the `kilari-next` folder.
-3. Run `npm install`.
-4. Run `npm run dev`.
-5. Open http://localhost:3000.
+## 🌟 Key Features
 
-## What changed
+1. **⚡ Live Interactive Map (Geoapify & Leaflet)**:
+   - High-resolution OpenStreetMap Bright raster tiles with automatic Retina (`@2x`) support.
+   - Real-time custom EV lightning bolt pins with power output, connector type, and fixed rate details.
+   - Interactive popups with direct *"Select Charger"* booking trigger.
 
-- Added a Driving Licence KYC information card on the shared login screen.
-- Added a DigiLocker verification journey in the driver profile/onboarding area with clear steps and a status area.
-- Added a responsive explanation modal describing consent, the official DigiLocker flow, and privacy expectations.
-- Kept the shared login and the existing “Rent a charger” / “Lend the charger” workspace choice.
-- Added clear prototype messaging so customers are not told that a licence was genuinely verified when no verification service is connected.
+2. **🤖 Gemma 4 AI Assistant (`gemma-4-26b-a4b-it`)**:
+   - Integrated with Google's Gemma 4 26B instruct model via Google AI Studio API.
+   - Provides charging recommendations, trip planning, safety guidance, and connector compatibility advice.
+   - Intelligent thought/reasoning part extraction with strict JSON parsing.
 
-## Important: live DigiLocker connection is not enabled
+3. **💳 Test Payments (Razorpay)**:
+   - Live Razorpay order creation via REST API.
+   - Automatic order generation with HMAC-SHA256 signature verification.
+   - Fixed rate policy: ₹14/kWh (1400 paise) across all calculations.
 
-The included DigiLocker UI is a front-end prototype only. It does not redirect to DigiLocker, retrieve documents, or verify a driving licence. A production integration requires approved DigiLocker access, backend-managed authorization/state and callback handling, server-side validation, consent handling, and secure storage of only the necessary verification result. Do not collect Aadhaar numbers, licence numbers, or OTPs in this demo UI.
+4. **📱 Real Phone OTP Authentication (Twilio)**:
+   - Phone verification via Twilio SMS REST API.
+   - Server-side in-memory OTP cache with dev fallback (`123456`) for local testing.
 
-The existing OTP, payments, maps, AI, and sample records also remain demo/simulated where indicated. This project is a Next.js shell around the original HTML prototype, not a complete React rewrite.
+5. **🎫 Secure Gate Pass with Signed QR Code**:
+   - HS256 JWT tokens unlock private host addresses only upon confirmed booking.
+   - Generates human-readable pass codes (`KIL-XXXX-XXXX`) and dynamic QR code data URLs.
+
+6. **📱 Universal Mobile Responsiveness**:
+   - Pixel-perfect rendering across iPhone SE (16:9), iPhone 12–16 (19.5:9), Pixel/Galaxy (20:9), and desktop screens.
+   - Prevents iOS auto-zoom stretching (`font-size: 16px` inputs) and eliminates horizontal overflow.
+   - Safe-area insets (`env(safe-area-inset-bottom)`) for modern notch and dynamic island devices.
+
+7. **🗄️ Fullstack SQLite & Prisma Schema**:
+   - 14 relational models seeded with Pune EV chargers (Green Hive, Skyline Residency, Balewadi Business Hub), vehicles, users, and sessions.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- Node.js 18+ LTS
+- npm or pnpm
+
+### 2. Installation
+```bash
+git clone https://github.com/yusufcodes-india/404_not_found.git
+cd 404_not_found
+npm install
+```
+
+### 3. Environment Variables
+Copy `.env.example` to `.env`:
+```bash
+cp .env.example .env
+```
+
+Configure your API keys in `.env`:
+```env
+DATABASE_URL="file:./dev.db"
+GEMMA_API_KEY="your-gemini-api-key"
+GEMMA_MODEL="gemma-4-26b-a4b-it"
+
+RAZORPAY_KEY_ID="rzp_test_..."
+RAZORPAY_KEY_SECRET="..."
+
+TWILIO_ACCOUNT_SID="AC..."
+TWILIO_API_KEY_SID="SK..."
+TWILIO_API_KEY_SECRET="..."
+
+MAPS_PROVIDER="geoapify"
+GEOAPIFY_API_KEY="a3b6cbc4ec4248a49338566cc87eaa60"
+```
+
+### 4. Database Setup
+```bash
+npx prisma generate
+npx prisma migrate dev
+```
+
+### 5. Run Dev Server
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 🧪 Testing
+
+Run unit & integration tests:
+```bash
+npm run test
+```
+
+Run TypeScript verification:
+```bash
+npm run typecheck
+```
