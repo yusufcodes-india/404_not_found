@@ -15,8 +15,11 @@ export interface KycVerifyResult {
 }
 
 export class KycAdapter {
-  static async startVerification(userId: string, _consentVersion = '1.0'): Promise<KycStartResult> {
+  static async startVerification(userId: string, consentVersion = '1.0'): Promise<KycStartResult> {
     const provider = process.env.KYC_PROVIDER || 'mock';
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(`[KYC] Verification initiated for user ${userId} with consent version ${consentVersion}`);
+    }
 
     if (provider === 'digilocker' && !process.env.DIGILOCKER_CLIENT_ID) {
       throw new Error('DigiLocker client credentials not configured. Please use mock mode in development.');

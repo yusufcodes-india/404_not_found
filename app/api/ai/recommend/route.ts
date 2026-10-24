@@ -18,10 +18,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { criteria, area: _area } = RecommendSchema.parse(body);
+    const { criteria, area } = RecommendSchema.parse(body);
 
     const chargers = await prisma.charger.findMany({
-      where: { status: 'ACTIVE' },
+      where: {
+        status: 'ACTIVE',
+        ...(area ? { addressApprox: { contains: area } } : {}),
+      },
       take: 5,
     });
 
