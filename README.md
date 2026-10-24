@@ -1,50 +1,25 @@
-# ⚡ Kilari — Community EV Charging Marketplace
+# Kilari — Next.js prototype with DigiLocker KYC UX
 
-**Turning idle community chargers into reliable local power.**
+This Next.js project preserves the supplied Kilari prototype inside a full-screen iframe so its existing design, navigation, workflows, and demo interactions remain intact.
 
-Kilari is an AI-powered, community-driven EV charging network designed for the unique challenges of Indian urban infrastructure. Instead of waiting for expensive public charging stations, Kilari allows homeowners and businesses to rent out their idle chargers to verified EV drivers.
+## Run locally
 
-## 🌟 Key Features
+1. Install Node.js LTS.
+2. Extract this ZIP and open a terminal in the `kilari-next` folder.
+3. Run `npm install`.
+4. Run `npm run dev`.
+5. Open http://localhost:3000.
 
-- **AI-Powered Trust (Kilari Score)**: A proprietary scoring engine that ranks chargers based on reliability, condition, owner reputation, and ease of travel.
-- **Secure Access (Gate Pass)**: Signed, time-limited QR passes that ensure only paid renters enter a host's property.
-- **Community Safety**: Integrated DigiLocker KYC verification and a server-side chat moderation engine that prevents off-platform transactions.
-- **Intelligent Discovery**: Map-based search with AI-driven demand prediction to help renters find vacant slots.
-- **Fair Pricing**: Transparent ₹14/kWh pricing with a small 10% platform fee to keep the community running.
+## What changed
 
-## 🛠️ Tech Stack
+- Added a Driving Licence KYC information card on the shared login screen.
+- Added a DigiLocker verification journey in the driver profile/onboarding area with clear steps and a status area.
+- Added a responsive explanation modal describing consent, the official DigiLocker flow, and privacy expectations.
+- Kept the shared login and the existing “Rent a charger” / “Lend the charger” workspace choice.
+- Added clear prototype messaging so customers are not told that a licence was genuinely verified when no verification service is connected.
 
-- **Frontend**: Next.js 15 (App Router), TypeScript, Tailwind CSS.
-- **Backend**: Supabase (Auth, Postgres, RLS, Realtime).
-- **AI**: Custom scoring and anomaly detection engines.
-- **Payments**: Razorpay (Test Mode).
-- **Maps**: Google Maps JavaScript API.
-- **PWA**: Installable manifest and service workers for a native mobile experience.
+## Important: live DigiLocker connection is not enabled
 
-## 🚀 Quick Start
+The included DigiLocker UI is a front-end prototype only. It does not redirect to DigiLocker, retrieve documents, or verify a driving licence. A production integration requires approved DigiLocker access, backend-managed authorization/state and callback handling, server-side validation, consent handling, and secure storage of only the necessary verification result. Do not collect Aadhaar numbers, licence numbers, or OTPs in this demo UI.
 
-### 1. Environment Setup
-Create a `.env.local` file in the root directory:
-```bash
-cp .env.example .env.local
-```
-*Note: The app runs in **Demo Mode** by default (`NEXT_PUBLIC_DEMO_MODE=true`), so it will work even without real API keys.*
-
-### 2. Install & Run
-```bash
-npm install
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 📖 Demo Script (5 Minutes)
-1. **The Renter**: Login $\to$ Onboard $\to$ Map $\to$ Book a "High Score" charger $\to$ Pay $\to$ Generate Gate Pass.
-2. **The Host**: Switch to Lend Mode $\to$ List a Charger $\to$ Approve the booking request $\to$ Start/End a session.
-3. **The Admin**: Visit `/admin` $\to$ Approve KYC $\to$ Moderate a chat violation.
-
-## ⚠️ Honest Limitations & Roadmap
-- **Payment Payouts**: Currently manual in MVP. Automated payouts are in the roadmap.
-- **Live Hardware**: Uses a `MeterAdapter` mock. Integration with smart-socket hardware is next.
-- **KYC**: uses a DigiLocker mock. Real government API approval is required for production.
-
-**Built with ❤️ by Yusuf Tarwala (@yusufcodes-india)**
+The existing OTP, payments, maps, AI, and sample records also remain demo/simulated where indicated. This project is a Next.js shell around the original HTML prototype, not a complete React rewrite.
