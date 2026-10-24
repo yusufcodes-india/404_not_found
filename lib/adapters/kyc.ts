@@ -15,7 +15,7 @@ export interface KycVerifyResult {
 }
 
 export class KycAdapter {
-  static async startVerification(userId: string, consentVersion = '1.0'): Promise<KycStartResult> {
+  static async startVerification(userId: string, _consentVersion = '1.0'): Promise<KycStartResult> {
     const provider = process.env.KYC_PROVIDER || 'mock';
 
     if (provider === 'digilocker' && !process.env.DIGILOCKER_CLIENT_ID) {

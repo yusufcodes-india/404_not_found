@@ -59,16 +59,24 @@ export class PaymentAdapter {
 
   static verifySignature(orderId: string, paymentId: string, signature: string): boolean {
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
-    if (!keySecret || keySecret === 'placeholder_secret' || process.env.ALLOW_DEV_MOCKS === 'true') {
-      // In dev/mock mode, accept mock signatures
+    // If dev mock signature is explicitly provided and dev mocks allowed
+    if (signature === 'sig_mock_verified' && process.env.ALLOW_DEV_MOCKS === 'true') {
+      return true;
+    }
+    if (!keySecret || keySecret === 'placeholder_secret') {
       return true;
     }
 
-    const expected = crypto
-      .createHmac('sha256', keySecret)
-      .update(`${orderId}|${paymentId}`)
-      .digest('hex');
+    try {
+      const expected = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
 
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+      if (expected.length !== signature.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    } catch {
+      return false;
+    }
   }
 }

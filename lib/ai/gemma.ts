@@ -15,7 +15,7 @@ export class GemmaGateway {
     const requestId = options.requestId || `ai-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const apiKey = process.env.GEMMA_API_KEY;
     const model = (process.env.GEMMA_MODEL as GemmaModel) || this.defaultModel;
-    const timeoutMs = options.timeoutMs || 10000;
+    const timeoutMs = options.timeoutMs || 20000;
 
     // If no API key configured, use deterministic rule-based fallback immediately
     if (!apiKey) {
@@ -78,11 +78,20 @@ export class GemmaGateway {
       if (process.env.GEMMA_BASE_URL) {
         rawText = json.choices?.[0]?.message?.content || '';
       } else {
-        rawText = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const parts = json.candidates?.[0]?.content?.parts || [];
+        // Filter out thinking parts, take the actual response part
+        const nonThoughtParts = parts.filter((p: { thought?: boolean; text?: string }) => !p.thought);
+        const targetPart = nonThoughtParts.length > 0 ? nonThoughtParts[nonThoughtParts.length - 1] : parts[parts.length - 1];
+        rawText = targetPart?.text || '';
       }
 
-      // Clean any accidental markdown code fences
-      const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      // Clean any accidental markdown code fences or extract json substring
+      let cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+      }
       const parsed = JSON.parse(cleaned);
       const validated = schema.parse(parsed);
 

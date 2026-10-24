@@ -5,22 +5,29 @@ import { PROMPTS } from '@/lib/ai/prompts';
 
 describe('Gemma 4 AI Gateway', () => {
   it('falls back deterministically to rule-based output when API key is missing', async () => {
-    const fallback: ChatAssistantOutput = {
-      answer: 'Please use guest parking bay.',
-      needsHuman: false,
-    };
+    const prevKey = process.env.GEMMA_API_KEY;
+    delete process.env.GEMMA_API_KEY;
 
-    const result = await GemmaGateway.generateStructured(
-      PROMPTS.CHAT_ASSISTANT('Parking: Guest bay', 'Where should I park?'),
-      ChatAssistantSchema,
-      fallback,
-      { taskName: 'test_assistant' }
-    );
+    try {
+      const fallback: ChatAssistantOutput = {
+        answer: 'Please use guest parking bay.',
+        needsHuman: false,
+      };
 
-    expect(result.success).toBe(true);
-    expect(result.source).toBe('rules_fallback');
-    expect(result.data.answer).toBe('Please use guest parking bay.');
-    expect(result.model).toContain('gemma-4');
+      const result = await GemmaGateway.generateStructured(
+        PROMPTS.CHAT_ASSISTANT('Parking: Guest bay', 'Where should I park?'),
+        ChatAssistantSchema,
+        fallback,
+        { taskName: 'test_assistant' }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.source).toBe('rules_fallback');
+      expect(result.data.answer).toBe('Please use guest parking bay.');
+      expect(result.model).toContain('gemma-4');
+    } finally {
+      process.env.GEMMA_API_KEY = prevKey;
+    }
   });
 
   it('contains strict safety constraints in system prompt', () => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { okResponse, errorResponse } from '@/lib/api/response';
 import { createSession } from '@/lib/auth/session';
+import { OtpAdapter } from '@/lib/adapters/otp';
 
 const VerifySchema = z.object({
   phone: z.string(),
@@ -18,8 +19,9 @@ export async function POST(req: NextRequest) {
 
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
 
-    // Validate OTP (in mock/demo mode 123456 is accepted)
-    if (otp !== '123456' && process.env.ALLOW_DEV_MOCKS === 'true') {
+    // Validate OTP
+    const isValid = OtpAdapter.verifyOtp(cleanPhone, otp);
+    if (!isValid) {
       return errorResponse("That code isn't right. Check it and try again.", 'INVALID_OTP', 400);
     }
 

@@ -2,7 +2,18 @@ import fs from 'fs';
 import path from 'path';
 
 const htmlPath = path.resolve('./public/kilari.html');
-const content = fs.readFileSync(htmlPath, 'utf8');
+let content = fs.readFileSync(htmlPath, 'utf8');
+
+// Ensure Leaflet and Razorpay scripts are in <head>
+if (!content.includes('checkout.razorpay.com')) {
+  content = content.replace(
+    '</head>',
+    `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>`
+  );
+}
 
 const scriptStartTag = '<script>';
 const scriptEndTag = '</script>';
@@ -169,6 +180,7 @@ async function fetchChargers(){
       if (!window.selectedCharger && json.data.length > 0) {
         window.selectedCharger = json.data[0];
       }
+      setTimeout(initLiveMap, 50);
     }
   } catch(e) {
     console.warn(e);
@@ -256,36 +268,94 @@ async function requestPayment(){
   try {
     const bookings = window.liveBookings || [];
     const target = bookings.find(b => b.status === 'APPROVED') || bookings[0];
-    if (target) {
-      const ordRes = await fetch('/api/payments/create-order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
-        },
-        body: JSON.stringify({ bookingId: target.id })
-      });
-      const ordJson = await ordRes.json();
-      if (ordJson.ok) {
-        await fetch('/api/payments/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
-          },
-          body: JSON.stringify({
-            orderId: ordJson.data.orderId,
-            paymentId: 'pay_' + Date.now(),
-            signature: 'sig_mock_verified'
-          })
-        });
-        toast('Payment verified! Gate pass generated.');
-        window.activePaidBookingId = target.id;
-        await loadGatePass(target.id);
-        go('gatepass');
-        return;
-      }
+    if (!target) {
+      toast('No approved booking found ready for payment.');
+      return;
     }
+
+    const ordRes = await fetch('/api/payments/create-order', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
+      },
+      body: JSON.stringify({ bookingId: target.id })
+    });
+    const ordJson = await ordRes.json();
+    if (!ordJson.ok) {
+      toast('Order creation: ' + (ordJson.error?.message || 'Error'));
+      return;
+    }
+
+    // Real Razorpay standard checkout dialog
+    if (window.Razorpay && ordJson.data.provider === 'razorpay' && !ordJson.data.isMock) {
+      const options = {
+        key: ordJson.data.keyId || 'rzp_test_TrtklrVjG7Ze8T',
+        amount: ordJson.data.amountPaise,
+        currency: ordJson.data.currency || 'INR',
+        name: 'Kilari EV Charging',
+        description: 'Booking #' + target.id.slice(0, 8),
+        order_id: ordJson.data.orderId,
+        prefill: {
+          name: window.currentUser?.fullName || accountName || 'Honey Kumar',
+          contact: accountPhone || '+919876543210'
+        },
+        theme: { color: '#174c3a' },
+        handler: async function (response) {
+          toast('Payment captured! Verifying signature...');
+          const verRes = await fetch('/api/payments/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
+            },
+            body: JSON.stringify({
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature
+            })
+          });
+          const verJson = await verRes.json();
+          if (verJson.ok) {
+            toast('Payment verified! Gate pass generated.');
+            window.activePaidBookingId = target.id;
+            await fetchBookings();
+            await loadGatePass(target.id);
+            go('gatepass');
+          } else {
+            toast('Signature verification failed');
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            toast('Payment modal closed');
+          }
+        }
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+      return;
+    }
+
+    // Dev mock fallback
+    await fetch('/api/payments/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
+      },
+      body: JSON.stringify({
+        orderId: ordJson.data.orderId,
+        paymentId: 'pay_' + Date.now(),
+        signature: 'sig_mock_verified'
+      })
+    });
+    toast('Payment verified! Gate pass generated.');
+    window.activePaidBookingId = target.id;
+    await fetchBookings();
+    await loadGatePass(target.id);
+    go('gatepass');
+    return;
   } catch(e) {
     console.error(e);
   }
@@ -482,6 +552,7 @@ function render(){
   }
   document.body.classList.toggle('logged-out',!loggedIn);
   applySemanticColors();
+  setTimeout(initLiveMap, 50);
 }
 
 const pages={
@@ -507,7 +578,71 @@ addcharger:\`<div class="hello"><div><div class="eyebrow">GROW THE NETWORK</div>
 };
 
 function mapHTML(){
-  return \`<div class="mapbox"><div class="park"></div><div class="park p2"></div><div class="river"></div><span class="map-label" style="top:38%;left:42%">BANER ROAD</span><span class="map-label" style="top:70%;left:20%">PASHAN</span><span class="map-label" style="top:17%;left:63%">AUNDH</span><div class="pin" style="top:24%;left:38%"><span>ϟ</span></div><div class="pin selected" style="top:46%;left:57%"><span>ϟ</span></div><div class="pin" style="top:62%;left:30%"><span>ϟ</span></div><div class="map-caption">⌖ &nbsp; Approx. public pins (jittered 250m for privacy)</div></div>\`;
+  return \`<div id="kilari-live-map" class="mapbox" style="height:310px; width:100%; border-radius:14px; position:relative; overflow:hidden; z-index:1;">
+    <div class="park"></div><div class="park p2"></div><div class="river"></div>
+    <span class="map-label" style="top:38%;left:42%">BANER ROAD</span>
+    <span class="map-label" style="top:70%;left:20%">PASHAN</span>
+    <span class="map-label" style="top:17%;left:63%">AUNDH</span>
+    <div class="pin" style="top:24%;left:38%"><span>ϟ</span></div>
+    <div class="pin selected" style="top:46%;left:57%"><span>ϟ</span></div>
+    <div class="pin" style="top:62%;left:30%"><span>ϟ</span></div>
+    <div class="map-caption">⌖ &nbsp; Approx. public pins (jittered 250m for privacy)</div>
+  </div>\`;
+}
+
+function initLiveMap(){
+  const el = document.getElementById('kilari-live-map');
+  if (!el || !window.L) return;
+  try {
+    if (window.kilariLeafletMap) {
+      window.kilariLeafletMap.remove();
+      window.kilariLeafletMap = null;
+    }
+    const map = L.map('kilari-live-map', {
+      center: [18.5590, 73.7868],
+      zoom: 13,
+      zoomControl: true,
+      attributionControl: false
+    });
+    window.kilariLeafletMap = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    const chargers = window.liveChargers && window.liveChargers.length > 0 ? window.liveChargers : [
+      { id: 'green-hive', title: 'Green Hive Society', approxLat: 18.5590, approxLng: 73.7868, powerKw: 11, connectorType: 'Type 2', pricePerKwh: 14 },
+      { id: 'skyline', title: 'Skyline Residency', approxLat: 18.5670, approxLng: 73.8010, powerKw: 7.4, connectorType: 'Type 2', pricePerKwh: 14 },
+      { id: 'balewadi', title: 'Balewadi Business Hub', approxLat: 18.5750, approxLng: 73.7740, powerKw: 22, connectorType: 'CCS2', pricePerKwh: 14 }
+    ];
+
+    chargers.forEach((c, idx) => {
+      const lat = c.approxLat || (18.5590 + idx * 0.008);
+      const lng = c.approxLng || (73.7868 + idx * 0.009);
+
+      const marker = L.circleMarker([lat, lng], {
+        radius: 9,
+        fillColor: '#174c3a',
+        color: '#ffffff',
+        weight: 3,
+        opacity: 1,
+        fillOpacity: 0.95
+      }).addTo(map);
+
+      marker.bindPopup(\`
+        <div style="font-family:'DM Sans',sans-serif;min-width:140px">
+          <strong style="font-size:12px;color:#174c3a;display:block;margin-bottom:2px">\${escapeHTML(c.title || c.name || 'Charger')}</strong>
+          <div style="font-size:11px;color:#60766a;margin-bottom:4px">\${c.powerKw || 11} kW · \${c.connectorType || 'Type 2'}</div>
+          <div style="font-weight:700;color:#287451;font-size:12px;margin-bottom:6px">₹\${c.pricePerKwh || 14}/kWh fixed</div>
+          <button style="background:#174c3a;color:white;border:0;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer" onclick="openChargerDetail('\${c.id}')">Select Charger →</button>
+        </div>
+      \`);
+    });
+
+    setTimeout(() => { map.invalidateSize(); }, 200);
+  } catch(e) {
+    console.warn('Map init exception:', e);
+  }
 }
 
 function setRankingPreference(value){

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { okResponse, errorResponse } from '@/lib/api/response';
+import { OtpAdapter } from '@/lib/adapters/otp';
 
 const LoginSchema = z.object({
   phone: z.string().min(10, 'Valid 10-digit Indian mobile required'),
@@ -19,11 +20,15 @@ export async function POST(req: NextRequest) {
       return errorResponse('Please enter a valid 10-digit Indian mobile number', 'INVALID_PHONE', 400);
     }
 
-    // In dev / mock mode, demo OTP is 123456
+    // Generate OTP (or 123456 if dev mock)
+    const otp = process.env.ALLOW_DEV_MOCKS === 'true' ? '123456' : OtpAdapter.generateOtp();
+    const result = await OtpAdapter.sendOtp(cleanPhone, otp);
+
     return okResponse({
       phone: cleanPhone,
-      otpSent: true,
-      hint: process.env.ALLOW_DEV_MOCKS === 'true' ? 'Demo OTP is 123456' : 'OTP sent via SMS',
+      otpSent: result.success,
+      hint: result.devOtp ? `Demo code is ${result.devOtp}` : 'OTP sent via SMS',
+      isMock: result.isMock,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Invalid request';
