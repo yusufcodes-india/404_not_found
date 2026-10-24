@@ -17,7 +17,18 @@ export async function GET() {
     },
     integrations: {
       database: 'connected',
-      payments: process.env.PAYMENT_PROVIDER || 'mock',
+      maps: {
+        provider: process.env.MAPS_PROVIDER || 'geoapify',
+        configured: Boolean(process.env.GEOAPIFY_API_KEY || process.env.MAPS_API_KEY),
+      },
+      payments: {
+        provider: process.env.PAYMENT_PROVIDER || 'razorpay',
+        configured: Boolean(process.env.RAZORPAY_KEY_ID),
+      },
+      otp: {
+        provider: process.env.OTP_PROVIDER || 'twilio',
+        configured: Boolean(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID),
+      },
       kyc: process.env.KYC_PROVIDER || 'mock',
     },
   });
