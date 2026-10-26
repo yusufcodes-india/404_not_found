@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
       include: { profile: true },
     });
 
+    const trimmedName = name?.trim() || '';
+
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
           role,
           profile: {
             create: {
-              fullName: name || (role === 'DRIVER' ? 'Honey Kumar' : 'Priya Sharma'),
+              fullName: trimmedName || (role === 'DRIVER' ? 'Honey Kumar' : 'Priya Sharma'),
               city: 'Pune',
               kycStatus: 'VERIFIED', // Seed initial mock users as verified for demo
             },
@@ -46,15 +48,52 @@ export async function POST(req: NextRequest) {
         },
         include: { profile: true },
       });
+    } else if (trimmedName) {
+      // User exists: update profile name so it matches the name entered at login!
+      await prisma.profile.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          fullName: trimmedName,
+          city: 'Pune',
+          kycStatus: 'VERIFIED',
+        },
+        update: {
+          fullName: trimmedName,
+        },
+      });
+      user = await prisma.user.findUnique({
+        where: { id: user.id },
+        include: { profile: true },
+      }) || user;
     }
 
     const token = await createSession(user.id);
+
+    // Record audit event for user login
+    await prisma.auditEvent.create({
+      data: {
+        actorId: user.id,
+        action: 'USER_LOGIN',
+        entity: 'User',
+        entityId: user.id,
+        outcome: 'SUCCESS',
+        metadata: JSON.stringify({
+          phone: cleanPhone,
+          fullName: user.profile?.fullName || trimmedName,
+          role: user.role,
+          loginAt: new Date().toISOString(),
+        }),
+      },
+    }).catch(() => {});
+
     const res = okResponse({
       user: {
         id: user.id,
         phone: user.phone,
         role: user.role,
-        fullName: user.profile?.fullName,
+        fullName: user.profile?.fullName || trimmedName,
+        name: user.profile?.fullName || trimmedName,
         kycStatus: user.profile?.kycStatus,
       },
       token,

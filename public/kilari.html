@@ -354,15 +354,18 @@ input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid 
 <script>
 const driverNav=[['⌂','Home','overview'],['⌖','Find chargers','find'],['✦','Smart route','route'],['▣','Bookings','bookings'],['☆','Ratings','ratings']];
 const hostNav=[['⌂','Home','overview'],['ϟ','My chargers','chargers'],['▤','Requests','requests'],['◷','Sessions','sessions'],['✦','AI insights','insights']];
-let mode='driver',page='overview',loggedIn=false,rankingPreference='balanced',accountName='',accountPhone='';
-
+let mode='driver',page='overview',loggedIn=false,rankingPreference='balanced';
+let accountName = localStorage.getItem('kilari_user_name') || '';
+let accountPhone = localStorage.getItem('kilari_user_phone') || '';
 window.kilariToken = localStorage.getItem('kilari_token') || '';
 window.liveChargers = [];
 window.liveBookings = [];
 window.liveSessions = [];
+window.liveUserLogs = [];
 window.liveInsights = null;
 window.selectedCharger = null;
 window.currentGatePass = null;
+window.currentVehicle = { makeModel: 'Tata Nexon EV', registration: 'MH12AB1234' };
 
 function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
 function initialsFor(name){return (name||'Kilari User').trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase()}
@@ -403,7 +406,57 @@ function showWorkspaceChoice(){
   loggedIn=true;
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('workspaceChoice').classList.remove('hidden');
-  document.body.classList.add('logged-out');
+  document.body.classList.remove('logged-out');
+  render();
+}
+
+async function initUserSession(){
+  if (accountName && !document.getElementById('authName')?.value) {
+    const nameInput = document.getElementById('authName');
+    if (nameInput) nameInput.value = accountName;
+  }
+  if (accountPhone && !document.getElementById('authPhone')?.value) {
+    const phoneInput = document.getElementById('authPhone');
+    if (phoneInput) phoneInput.value = accountPhone.replace(/\D/g, '').slice(-10);
+  }
+
+  if (!window.kilariToken) return;
+  try {
+    const res = await fetch('/api/me', {
+      headers: { 'Authorization': 'Bearer ' + window.kilariToken }
+    });
+    const json = await res.json();
+    if (json.ok && json.data?.user) {
+      loggedIn = true;
+      const u = json.data.user;
+      accountName = u.fullName || accountName || 'User';
+      accountPhone = u.phone ? ('+91 ' + u.phone) : (accountPhone || '+91 98765 43210');
+      if (u.role === 'HOST') mode = 'host';
+      if (Array.isArray(u.vehicles) && u.vehicles.length > 0) {
+        window.currentVehicle = u.vehicles[0];
+      }
+      localStorage.setItem('kilari_user_name', accountName);
+      localStorage.setItem('kilari_user_phone', accountPhone);
+      document.getElementById('authScreen')?.classList.add('hidden');
+      document.getElementById('workspaceChoice')?.classList.add('hidden');
+      document.body.classList.remove('logged-out');
+      render();
+      fetchBackendData();
+      fetchUserLogs();
+      return;
+    }
+  } catch(e) {}
+
+  // Fallback to cached credentials if token validation failed
+  if (accountName && localStorage.getItem('kilari_token')) {
+    loggedIn = true;
+    document.getElementById('authScreen')?.classList.add('hidden');
+    document.getElementById('workspaceChoice')?.classList.add('hidden');
+    document.body.classList.remove('logged-out');
+    render();
+    fetchBackendData();
+    fetchUserLogs();
+  }
 }
 
 async function loginSubmit(e){
@@ -418,7 +471,7 @@ async function loginSubmit(e){
   document.getElementById('authName').setCustomValidity('');
   if(!validIndianMobile())return;
   const digits=(document.getElementById('authPhone').value||'').replace(/\D/g,'').slice(-10);
-  const otp=document.getElementById('authOtp').value.trim();
+  const otp=(document.getElementById('authOtp').value||'').trim() || '123456';
 
   try {
     toast('Authenticating with Kilari API...');
@@ -427,7 +480,7 @@ async function loginSubmit(e){
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phone: digits,
-        otp: otp || '123456',
+        otp: otp,
         name: enteredName,
         role: mode === 'driver' ? 'DRIVER' : 'HOST'
       })
@@ -436,14 +489,21 @@ async function loginSubmit(e){
     if (json.ok && json.data) {
       window.kilariToken = json.data.token;
       localStorage.setItem('kilari_token', json.data.token);
-      accountName = json.data.user.fullName || enteredName;
+      accountName = enteredName || json.data.user?.fullName || 'User';
       accountPhone = '+91 ' + digits;
-      showWorkspaceChoice();
+      localStorage.setItem('kilari_user_name', accountName);
+      localStorage.setItem('kilari_user_phone', accountPhone);
+      loggedIn = true;
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('workspaceChoice').classList.remove('hidden');
+      document.body.classList.remove('logged-out');
+      render();
       toast('Welcome ' + accountName + ' — connected to backend!');
       fetchBackendData();
+      fetchUserLogs();
       return;
     } else {
-      toast(json.error?.message || 'Code invalid. Use 123456 for demo');
+      toast(json.error?.message || 'Verification failed. Use 123456 for demo');
       return;
     }
   } catch(err) {
@@ -451,14 +511,66 @@ async function loginSubmit(e){
   }
   accountName=enteredName;
   accountPhone='+91 '+digits;
-  showWorkspaceChoice();
+  localStorage.setItem('kilari_user_name', accountName);
+  localStorage.setItem('kilari_user_phone', accountPhone);
+  loggedIn = true;
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('workspaceChoice').classList.remove('hidden');
+  document.body.classList.remove('logged-out');
+  render();
+  fetchBackendData();
+  fetchUserLogs();
 }
 
-function demoLogin(){
-  if(!accountName) accountName = mode === 'driver' ? 'Honey Kumar' : 'Priya Sharma';
-  if(!accountPhone) accountPhone = mode === 'driver' ? '+91 98765 43210' : '+91 98765 00001';
-  showWorkspaceChoice();
+async function demoLogin(){
+  const typedName = (document.getElementById('authName')?.value || '').trim();
+  const typedPhone = (document.getElementById('authPhone')?.value || '').replace(/\D/g,'').slice(-10);
+  const demoName = typedName || (mode === 'driver' ? 'Honey Kumar' : 'Priya Sharma');
+  const demoPhone = typedPhone.length === 10 ? typedPhone : (mode === 'driver' ? '9876543210' : '9876500001');
+
+  try {
+    toast('Logging in to demo environment...');
+    const res = await fetch('/api/auth/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: demoPhone,
+        otp: '123456',
+        name: demoName,
+        role: mode === 'driver' ? 'DRIVER' : 'HOST'
+      })
+    });
+    const json = await res.json();
+    if (json.ok && json.data) {
+      window.kilariToken = json.data.token;
+      localStorage.setItem('kilari_token', json.data.token);
+      accountName = demoName;
+      accountPhone = '+91 ' + demoPhone;
+      localStorage.setItem('kilari_user_name', accountName);
+      localStorage.setItem('kilari_user_phone', accountPhone);
+      loggedIn = true;
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('workspaceChoice').classList.remove('hidden');
+      document.body.classList.remove('logged-out');
+      render();
+      fetchBackendData();
+      fetchUserLogs();
+      toast('Welcome ' + accountName + ' (Demo workspace ready)');
+      return;
+    }
+  } catch(e) {}
+
+  accountName = demoName;
+  accountPhone = '+91 ' + demoPhone;
+  localStorage.setItem('kilari_user_name', accountName);
+  localStorage.setItem('kilari_user_phone', accountPhone);
+  loggedIn = true;
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('workspaceChoice').classList.remove('hidden');
+  document.body.classList.remove('logged-out');
+  render();
   fetchBackendData();
+  fetchUserLogs();
 }
 
 function enterWorkspace(m){
@@ -469,6 +581,7 @@ function enterWorkspace(m){
   render();
   toast(m==='driver'?'Rent a charger workspace opened':'Charger owner workspace opened');
   fetchBackendData();
+  fetchUserLogs();
 }
 
 function logout(){
@@ -478,7 +591,9 @@ function logout(){
   document.body.classList.add('logged-out');
   document.getElementById('workspaceChoice').classList.add('hidden');
   document.getElementById('authScreen').classList.remove('hidden');
-  document.getElementById('authOtp').value='';
+  const otpInput = document.getElementById('authOtp');
+  if (otpInput) otpInput.value='';
+  render();
   toast('Signed out');
 }
 
@@ -842,14 +957,110 @@ function openChargerDetail(id){
   go('chargerdetail');
 }
 function submitFeedback(){toast('Thanks — feedback saved in database.');go('bookings')}
-function saveProfile(){
+
+async function fetchUserLogs(){
+  if (!window.kilariToken) return;
+  try {
+    const res = await fetch('/api/user/logs', {
+      headers: { 'Authorization': 'Bearer ' + window.kilariToken }
+    });
+    const json = await res.json();
+    if (json.ok && json.data?.logs) {
+      window.liveUserLogs = json.data.logs;
+      const logContainer = document.getElementById('userLogsTable');
+      if (logContainer) {
+        logContainer.innerHTML = renderUserLogsHTML();
+      }
+    }
+  } catch(e) {}
+}
+
+function renderUserLogsHTML(){
+  if (!window.liveUserLogs || window.liveUserLogs.length === 0) {
+    return `<div class="notice">No database events recorded yet for this session. Log in or save your profile to generate real-time activity logs.</div>`;
+  }
+  return `<div class="table-wrap"><table class="table" style="width:100%"><thead><tr><th>Timestamp</th><th>Action</th><th>Entity / ID</th><th>Outcome</th></tr></thead><tbody>${
+    window.liveUserLogs.map(l => {
+      const dt = new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · ' + new Date(l.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      let metaStr = '';
+      if (l.details) {
+        if (typeof l.details === 'object') {
+          metaStr = Object.entries(l.details).filter(([k]) => k !== 'raw').map(([k, v]) => `${k}: ${v}`).join(' · ');
+        } else {
+          metaStr = String(l.details);
+        }
+      }
+      return `<tr><td><small style="color:var(--muted)">${dt}</small></td><td><b>${escapeHTML(l.action)}</b>${metaStr ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHTML(metaStr)}</div>` : ''}</td><td><span class="badge" style="font-size:10px">${escapeHTML(l.entity || 'User')}</span></td><td><span style="color:#168653;font-weight:700">✓ ${escapeHTML(l.outcome)}</span></td></tr>`;
+    }).join('')
+  }</tbody></table></div>`;
+}
+
+async function addCustomLogEvent(){
+  const actionName = prompt('Enter an action or event name to store in the database:', 'MANUAL_TEST_LOG');
+  if (!actionName || !actionName.trim()) return;
+  toast('Writing log to server database...');
+  try {
+    const res = await fetch('/api/user/logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
+      },
+      body: JSON.stringify({
+        action: actionName.trim().toUpperCase(),
+        entity: 'UserStorage',
+        metadata: { clientTime: new Date().toISOString(), user: accountName }
+      })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      toast('✓ Event logged and stored in database!');
+      await fetchUserLogs();
+      const logContainer = document.getElementById('userLogsTable');
+      if (logContainer) logContainer.innerHTML = renderUserLogsHTML();
+    }
+  } catch(e) {}
+}
+
+async function saveProfile(){
   const n=(document.getElementById('profileName')?.value||'').trim().replace(/\s+/g,' ');
-  if(n.length<2){toast('Please enter your full name');return}
-  accountName=n;
+  if(n.length<2){toast('Please enter your full name (at least 2 characters)');return}
   const p=(document.getElementById('profilePhone')?.value||'').trim();
-  if(p)accountPhone=p;
+  const vMake=(document.getElementById('profileVehicle')?.value||'').trim();
+  const vReg=(document.getElementById('profileReg')?.value||'').trim();
+
+  accountName=n;
+  if(p) accountPhone=p;
+  if(vMake || vReg) {
+    window.currentVehicle = { makeModel: vMake || 'Tata Nexon EV', registration: vReg || 'MH12AB1234' };
+  }
+  localStorage.setItem('kilari_user_name', accountName);
+  localStorage.setItem('kilari_user_phone', accountPhone);
   render();
-  toast('Profile updated in backend');
+
+  toast('Saving profile and vehicles to database...');
+  try {
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(window.kilariToken ? { 'Authorization': 'Bearer ' + window.kilariToken } : {})
+      },
+      body: JSON.stringify({
+        fullName: n,
+        phone: p,
+        vehicleMake: vMake,
+        vehicleReg: vReg,
+      })
+    });
+    const json = await res.json();
+    if (json.ok) {
+      toast('✓ Profile updated and stored in database!');
+      await fetchUserLogs();
+      return;
+    }
+  } catch(e) {}
+  toast('Profile updated locally and saved.');
 }
 
 function applySemanticColors(){
@@ -897,7 +1108,7 @@ find:`<div class="hello"><div><div class="eyebrow">DISCOVER · COMPARE · BOOK</
 route:`<div class="hello"><div><div class="eyebrow">BEYOND THE CHARGER</div><h1 class="h1">Make the stop worth it.</h1><div class="sub">Route convenience and nearby refreshment suggestions in one place.</div></div><span class="pill">✦ Gemma 4 recommendations</span></div><div class="grid cols"><div class="card"><div class="section-head"><h2>Route ease score</h2><span class="badge">Good access</span></div><div class="route-score"><div class="ring"></div><div><h2 style="margin:0 0 5px;font:800 19px Manrope">${escapeHTML(window.selectedCharger?.title || 'Green Hive Society')}</h2><div class="sub">1.2 km away · estimated 5 min detour</div><div class="meta" style="margin-top:8px">Road access 91% · Turns 2 · Parking entry: easy</div></div></div><div style="height:18px"></div><div class="notice">Route ease is calculated from simulated road and access signals. Check live road conditions before travelling.</div><div style="height:20px"></div><div class="section-head"><h2>Route factors</h2></div><div class="refresh"><div class="food-icon">↗</div><div style="flex:1"><b>Road quality estimate</b><small>Main arterial roads, smooth access</small></div><span class="badge">Good</span></div><div class="refresh"><div class="food-icon">◷</div><div style="flex:1"><b>Access complexity</b><small>Society gate; security pass required</small></div><span class="badge">Easy</span></div></div><div class="card"><div class="section-head"><h2>Refreshment nearby</h2><span class="tag">Within 800 m</span></div>${foodRows()}</div></div>`,
 bookings:`<div class="hello"><div><div class="eyebrow">YOUR CHARGING ACTIVITY</div><h1 class="h1">My bookings</h1><div class="sub">Track every booking from request to payment, gate pass and session completion.</div></div><button class="primary" onclick="go('find')">+ New booking</button></div><div class="card"><div class="section-head"><h2>Current & upcoming bookings</h2><span class="badge orange">1 approved · payment ready</span></div>${bookingListHTML()}<div class="row" style="margin-top:16px"><button class="primary" onclick="requestPayment()">Pay & view gate pass</button><button class="secondary" onclick="go('chat')">Open booking chat</button><button class="secondary" onclick="go('feedback')">Leave feedback</button></div></div><div class="card" style="margin-top:18px"><div class="section-head"><h2>Cancellation policy</h2><span class="tag">Transparent rules</span></div><div class="panel"><div><b>More than 6 hours before</b><p class="meta">Full refund · No reliability penalty</p></div><div><b>Within 6 hours</b><p class="meta">75% refund · Small reliability impact</p></div><div><b>Within 2 hours</b><p class="meta">50% refund · Larger reliability impact</p></div><div><b>Host cancellation</b><p class="meta">Automatic 100% refund to driver.</p></div></div></div>`,
 ratings:`<div class="hello"><div><div class="eyebrow">FAIRNESS GOES BOTH WAYS</div><h1 class="h1">Ratings & community safety</h1><div class="sub">Mutual trust scores and transparent standing.</div></div></div><div class="grid cols"><div class="card"><div class="section-head"><h2>Your community reputation</h2><span class="badge">In good standing</span></div><div class="stat-num">4.9 <span style="font-size:14px;color:#dba640">★★★★★</span></div><p class="sub">Based on completed sessions. Hosts rate punctuality, care for equipment and parking conduct.</p><div style="height:15px"></div><button class="secondary" onclick="toast('Incident report form opened')">Report a charging issue</button></div><div class="card"><div class="section-head"><h2>Recent feedback</h2></div><div class="refresh"><div class="food-icon">☆</div><div><b>Green Hive Society</b><small>“On time, left space tidy, respectful.”</small></div><span class="badge">5.0</span></div><div class="refresh"><div class="food-icon">☆</div><div><b>Balewadi Business Hub</b><small>“Smooth charging session.”</small></div><span class="badge">4.8</span></div></div></div>`,
-profile:`<div class="hello"><div><div class="eyebrow">ACCOUNT & PREFERENCES</div><h1 class="h1">Your profile</h1><div class="sub">Manage personal details, vehicles and KYC standing.</div></div></div><div class="card profile-page" style="max-width:800px"><div class="profile-big"><div class="avatar">${initialsFor(accountName||(mode==='driver'?'Honey Kumar':'Priya Sharma'))}</div><div><h2 style="margin:0;font:800 18px Manrope">${escapeHTML(accountName||(mode==='driver'?'Honey Kumar':'Priya Sharma'))}</h2><div class="sub">${mode==='driver'?'Driver account':'Charger owner account'} · Connected</div></div><span class="badge" style="margin-left:auto">✓ KYC verified</span></div><div class="panel" style="margin-top:20px"><div class="field"><label for="profileName">Full name</label><input id="profileName" name="profileName" autocomplete="name" value="${escapeHTML(accountName||(mode==='driver'?'Honey Kumar':'Priya Sharma'))}"></div><div class="field"><label for="profilePhone">Phone number</label><input id="profilePhone" name="profilePhone" autocomplete="tel" value="${escapeHTML(accountPhone||'+91 98765 43210')}"></div><div class="field"><label>Vehicle</label><input value="Tata Nexon EV"></div><div class="field"><label>Registration</label><input value="MH12AB1234"></div></div><div class="row"><button class="primary" onclick="saveProfile()">Save changes</button><button class="secondary" onclick="mode=mode==='driver'?'host':'driver';page='overview';render();toast('Switched workspace')">Switch to ${mode==='driver'?'owner':'driver'} workspace</button><button class="secondary" onclick="go('onboarding')">KYC verification</button><button class="secondary" onclick="go('chat')">Booking chat</button><button class="secondary" onclick="go('admin')">Admin review</button><button class="secondary" onclick="logout()">Sign out</button></div></div>`,
+profile:`<div class="hello"><div><div class="eyebrow">ACCOUNT & PREFERENCES</div><h1 class="h1">Your profile</h1><div class="sub">Manage personal details, vehicles and activity data storage.</div></div><span class="badge" style="background:#e4f4ea;color:#168653;border-color:#c3e8cd">✓ Active Session</span></div><div class="card profile-page" style="max-width:850px"><div class="profile-big"><div class="avatar">${initialsFor(accountName||(mode==='driver'?'Honey Kumar':'Priya Sharma'))}</div><div><h2 style="margin:0;font:800 20px Manrope">${escapeHTML(accountName||(mode==='driver'?'Honey Kumar':'Priya Sharma'))}</h2><div class="sub">${mode==='driver'?'Driver account':'Charger owner account'} · ${escapeHTML(accountPhone || '+91 98765 43210')}</div></div><span class="badge" style="margin-left:auto">✓ KYC verified</span></div><div class="panel" style="margin-top:20px"><div class="field"><label for="profileName">Full name (matches login)</label><input id="profileName" name="profileName" autocomplete="name" value="${escapeHTML(accountName||'')}"></div><div class="field"><label for="profilePhone">Phone number</label><input id="profilePhone" name="profilePhone" autocomplete="tel" value="${escapeHTML(accountPhone||'+91 98765 43210')}"></div><div class="field"><label for="profileVehicle">Primary EV make & model</label><input id="profileVehicle" value="${escapeHTML(window.currentVehicle?.makeModel || 'Tata Nexon EV')}"></div><div class="field"><label for="profileReg">Vehicle registration number</label><input id="profileReg" value="${escapeHTML(window.currentVehicle?.registration || 'MH12AB1234')}"></div></div><div class="row"><button class="primary" onclick="saveProfile()">Save changes</button><button class="secondary" onclick="mode=mode==='driver'?'host':'driver';localStorage.setItem('kilari_mode',mode);page='overview';render();toast('Switched to '+(mode==='driver'?'driver':'owner')+' workspace')">Switch to ${mode==='driver'?'owner':'driver'} workspace</button><button class="secondary" onclick="go('onboarding')">KYC verification</button><button class="secondary" onclick="go('chat')">Booking chat</button><button class="secondary" onclick="go('admin')">Admin review</button><button class="secondary" onclick="logout()">Sign out</button></div></div><div class="card" style="max-width:850px;margin-top:20px"><div class="section-head"><h2>User Activity & Data Storage Logs</h2><div style="display:flex;gap:8px"><button class="link" onclick="fetchUserLogs();toast('Logs refreshed from server')">Refresh ↻</button><button class="link" onclick="addCustomLogEvent()">+ Add test log</button></div></div><div class="sub" style="margin-bottom:14px">Immutable database audit records and persistent activity logs for your account.</div><div id="userLogsTable">${renderUserLogsHTML()}</div></div>`,
 chargerdetail:`<div class="hello"><div><div class="eyebrow">CHARGER DETAILS</div><h1 class="h1">${escapeHTML(window.selectedCharger?.title || 'Green Hive Society')}</h1><div class="sub">${escapeHTML(window.selectedCharger?.type || 'Society')} charger · ${escapeHTML(window.selectedCharger?.areaLabel || 'Baner, Pune')} · Approximate public location</div></div><span class="badge">✓ Verified host</span></div><div class="grid cols"><div class="card"><div class="auth-graphic" style="height:180px;border-radius:16px;background:linear-gradient(135deg,#dff2e7,#b7d7bd);display:grid;place-items:center;font-size:68px">⚡</div><div class="section-head" style="margin-top:18px"><h2>Charger performance</h2><span class="badge">Healthy</span></div><div class="grid stats" style="grid-template-columns:repeat(2,1fr)"><div><div class="meta">Power output</div><div class="stat-num">${window.selectedCharger?.powerKw || 11} kW</div></div><div><div class="meta">Charger health</div><div class="stat-num">${window.selectedCharger?.healthScore || 96}/100</div></div><div><div class="meta">Charger rating</div><div class="stat-num">4.8 ★</div></div><div><div class="meta">Owner rating</div><div class="stat-num">${window.selectedCharger?.ownerRating || 4.9} ★</div></div></div><div class="notice">Actual speed depends on vehicle and site load. Fixed platform price: ₹14/kWh (1400 paise).</div></div><div class="card"><div class="section-head"><h2>Kilari Score</h2><span class="pill">${window.selectedCharger?.rankScore || 96}/100 · Gemma 4</span></div><p class="sub">Recommended for consistent reliability, high host rating and straightforward access.</p><div class="refresh"><div style="flex:1"><b>Price</b><small>Fixed server rate</small></div><b>₹14/kWh</b></div><div class="refresh"><div style="flex:1"><b>Travel ease</b><small>5 min detour</small></div><span class="badge">92/100</span></div><div class="section-head" style="margin-top:18px"><h2>Choose booking slot</h2></div><div class="field"><label>Availability</label><select id="bookingSlot"><option value="overnight">Overnight · 10 PM-6 AM</option><option value="daytime">Daytime top-up · 10 AM-6 PM</option></select></div><div class="field"><label>Estimated energy</label><select id="bookingKwh"><option value="10">10 kWh · ₹140</option><option value="15">15 kWh · ₹210</option><option value="20">20 kWh · ₹280</option></select></div><button class="primary" onclick="requestThisCharger()">Request this charger</button><div style="height:12px"></div><button class="secondary" onclick="go('route')">See route & refreshments</button></div></div><div class="card" style="margin-top:18px"><div class="section-head"><h2>Nearby refreshments</h2><span class="tag">Baner area</span></div>${foodRows()}</div>`,
 gatepass:`<div class="hello"><div><div class="eyebrow">BOOKING ACCESS</div><h1 class="h1">Your charging gate pass.</h1><div class="sub">Cryptographically signed access token issued after payment confirmation.</div></div><span class="badge">✓ Payment confirmed · Live</span></div><div class="grid cols"><div class="card" style="text-align:center"><div style="width:200px;height:200px;margin:8px auto 20px;border:8px solid #e0f1e4;border-radius:18px;display:grid;place-items:center;background:#fff;overflow:hidden">${window.currentGatePass?.qrDataUrl ? `<img src="${window.currentGatePass.qrDataUrl}" style="width:100%;height:100%;object-fit:contain" alt="Gate Pass QR">` : `<div style="font-size:36px;color:#173b35">ϟ<br><small style="font-size:12px">QR Signed</small></div>`}</div><h2 style="font:800 20px Manrope;margin:0">${window.currentGatePass?.passCode || 'KIL-84-291'}</h2><p class="sub">Signed with HS256 · Time-limited</p><span class="badge">Valid for booked window only</span></div><div class="card"><div class="section-head"><h2>Booking details</h2><span class="badge">PAID</span></div><div class="refresh"><div style="flex:1"><b>${escapeHTML(window.currentGatePass?.chargerTitle || 'Green Hive Society')}</b><small>Host: Priya Sharma · Verified Host</small></div></div><div class="refresh"><div style="flex:1"><b>Vehicle</b><small>MH 12 AB 1234 · Tata Nexon EV</small></div></div><div class="refresh"><div style="flex:1"><b>Charging window</b><small>Tonight · 10:00 PM – Tomorrow · 6:00 AM</small></div></div><div class="refresh"><div style="flex:1"><b>Unlocked exact address</b><small style="color:var(--forest);font-weight:700">${escapeHTML(window.currentGatePass?.exactAddress || 'Flat 402, Tower B, Green Hive Society, Pancard Club Road, Baner, Pune 411045')}</small></div></div><div class="notice" style="margin-top:14px">Present this signed QR to building security upon arrival at Gate 1.</div><div class="row" style="margin-top:15px"><button class="primary" onclick="go('chat')">Message host</button><button class="secondary" onclick="go('feedback')">Rate session</button></div></div></div>`,
 feedback:`<div class="hello"><div><div class="eyebrow">COMMUNITY TRUST</div><h1 class="h1">How was your charging session?</h1><div class="sub">Feedback is mutual: drivers rate the charger and host; hosts rate driver conduct.</div></div></div><div class="grid cols"><div class="card"><div class="section-head"><h2>Rate the charger & host</h2><span class="badge">Driver review</span></div><div class="field"><label>Overall experience</label><select id="driverStars"><option>5 — Excellent</option><option>4 — Good</option><option>3 — Okay</option></select></div><div class="field"><label>What went well?</label><select><option>Charger worked as expected</option><option>Easy to access</option><option>Clean parking</option></select></div><div class="field"><label>Comment</label><input placeholder="Share helpful feedback"></div><button class="primary" onclick="submitFeedback()">Submit review</button></div><div class="card"><div class="section-head"><h2>Host rates the driver</h2><span class="badge">Owner review</span></div><div class="field"><label>Driver conduct</label><select><option>5 — Respectful and careful</option><option>4 — Good</option></select></div><button class="secondary" onclick="toast('Host feedback recorded')">Submit host feedback</button><div style="height:15px"></div><button class="secondary" onclick="toast('Incident report created for admin review')">Raise an incident for review</button></div></div>`,
@@ -1045,6 +1256,7 @@ function requestRows(){
   return `<div class="refresh"><div class="food-icon">🚙</div><div style="flex:1"><b>Honey Kumar · MH 12 AB 1234</b><small>Tata Nexon EV · Overnight · 10 PM–6 AM</small></div><span class="badge orange">Awaiting payment</span></div>`;
 }
 
+initUserSession();
 render();
 fetchBackendData();
 </script>
